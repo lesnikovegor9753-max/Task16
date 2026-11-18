@@ -1,0 +1,148 @@
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+public class Main {
+
+    public enum DiffType {
+        MODIFIED,
+        ADDED,
+        REMOVED
+    }
+
+    public static class Difference {
+        public final int lineNumber;
+        public final DiffType type;
+        public final String lineFromFile1;
+        public final String lineFromFile2;
+
+        public Difference(int lineNumber, DiffType type, String lineFromFile1, String lineFromFile2) {
+            this.lineNumber = lineNumber;
+            this.type = type;
+            this.lineFromFile1 = lineFromFile1;
+            this.lineFromFile2 = lineFromFile2;
+        }
+    }
+
+    public static class ComparisonResult {
+        public final boolean isIdentical;
+        public final List<Difference> differences;
+
+        public ComparisonResult(boolean isIdentical, List<Difference> differences) {
+            this.isIdentical = isIdentical;
+            this.differences = differences;
+        }
+    }
+
+    public static class FileComparator {
+        public ComparisonResult compare(Path path1, Path path2) throws IOException {
+            List<String> lines1 = Files.readAllLines(path1, StandardCharsets.UTF_8);
+            List<String> lines2 = Files.readAllLines(path2, StandardCharsets.UTF_8);
+
+            List<Difference> diffs = new ArrayList<>();
+            int maxLines = Math.max(lines1.size(), lines2.size());
+
+            for (int i = 0; i < maxLines; i++) {
+                String l1 = i < lines1.size() ? lines1.get(i) : null;
+                String l2 = i < lines2.size() ? lines2.get(i) : null;
+
+                if (!Objects.equals(l1, l2)) {
+                    DiffType type;
+                    if (l1 == null) {
+                        type = DiffType.ADDED;
+                    } else if (l2 == null) {
+                        type = DiffType.REMOVED;
+                    } else {
+                        type = DiffType.MODIFIED;
+                    }
+                    diffs.add(new Difference(i + 1, type, l1, l2));
+                }
+            }
+            return new ComparisonResult(diffs.isEmpty(), diffs);
+        }
+    }
+
+    public static void main(String[] args) {
+        if (args.length < 2) {
+            System.out.println("Аргументы не переданы. Запуск в демо-режиме с созданием тестовых файлов...\n");
+            runDemo();
+            return;
+        }
+
+        Path path1 = Paths.get(args[0]);
+        Path path2 = Paths.get(args[1]);
+
+        compareAndPrint(path1, path2);
+    }
+
+    private static void compareAndPrint(Path path1, Path path2) {
+        System.out.println("=== Компаратор текстовых файлов ===");
+        System.out.println("Файл 1: " + path1.toAbsolutePath());
+        System.out.println("Файл 2: " + path2.toAbsolutePath());
+        System.out.println("-----------------------------------");
+
+        FileComparator comparator = new FileComparator();
+
+        try {
+            ComparisonResult result = comparator.compare(path1, path2);
+
+            if (result.isIdentical) {
+                System.out.println("Файлы ИДЕНТИЧНЫ.");
+            } else {
+                System.out.println("Файлы ИМЕЮТ РАЗЛИЧИЯ. Найдено различий: " + result.differences.size());
+                System.out.println();
+
+                for (Difference diff : result.differences) {
+                    System.out.println("Строка " + diff.lineNumber + ":");
+                    if (diff.type == DiffType.MODIFIED) {
+                        System.out.println(" \u001B[31m- " + diff.lineFromFile1 + "\u001B[0m");
+                        System.out.println(" \u001B[32m+ " + diff.lineFromFile2 + "\u001B[0m");
+                    } else if (diff.type == DiffType.REMOVED) {
+                        System.out.println(" \u001B[31m- " + diff.lineFromFile1 + "\u001B[0m");
+                    } else if (diff.type == DiffType.ADDED) {
+                        System.out.println(" \u001B[32m+ " + diff.lineFromFile2 + "\u001B[0m");
+                    }
+                    System.out.println();
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Ошибка при чтении файлов: " + e.getMessage());
+        }
+    }
+
+    private static void runDemo() {
+        Path file1 = Paths.get("demo_file1.txt");
+        Path file2 = Paths.get("demo_file2.txt");
+
+        try {
+            List<String> content1 = List.of(
+                    "Привет, мир!",
+                    "Это тестовый файл.",
+                    "Строка, которая будет изменена.",
+                    "Эта строка останется.",
+                    "А эта строка будет удалена."
+            );
+            Files.write(file1, content1, StandardCharsets.UTF_8);
+
+            List<String> content2 = List.of(
+                    "Привет, мир!",
+                    "Это тестовый файл.",
+                    "Строка, которая была ИЗМЕНЕНА!",
+                    "Эта строка останется.",
+                    "Новая добавленная строка.",
+                    "Еще одна новая строка."
+            );
+            Files.write(file2, content2, StandardCharsets.UTF_8);
+
+            compareAndPrint(file1, file2);
+
+        } catch (IOException e) {
+            System.err.println("Не удалось создать демо-файлы: " + e.getMessage());
+        }
+    }
+}
